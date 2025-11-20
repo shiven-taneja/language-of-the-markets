@@ -1,6 +1,11 @@
 # Language of the Markets: Deep Reinforcement Learning for Algorithmic Trading with Multimodal LLM Sentiment Fusion
 
+![Award](https://img.shields.io/badge/Award-Distinction-brightgreen)
+![Institution](https://img.shields.io/badge/Institution-UCL-blue)
+
 > **Can we generate "alpha" (excess returns) by giving a Deep Reinforcement Learning (DRL) agent the ability to "read" the news alongside "watching" the charts?**
+
+This project was developed as part of a Master's Dissertation at University College London (UCL), where it was awarded a **Distinction** (the highest classification available).
 
 This project presents a multimodal trading system that integrates quantitative market data (price, volume, technical indicators) with qualitative sentiment features derived from Large Language Models (LLMs).
 
@@ -141,4 +146,4 @@ This will:
 
 ---
 
-_This project was developed as part of a Master's Dissertation at UCL._
+
