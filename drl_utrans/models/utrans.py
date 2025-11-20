@@ -1,38 +1,72 @@
 import torch
 import torch.nn as nn
+from typing import Tuple
 
 
 class _NormLinearReLU(nn.Module):
-    """Red arrow in the figure:  LayerNorm ➜ Linear ➜ ReLU."""
+    """
+    A helper block consisting of LayerNorm -> Linear -> ReLU.
+    
+    This block corresponds to the red arrows in the architecture diagram.
+    
+    Parameters
+    ----------
+    in_dim : int
+        Input feature dimension.
+    out_dim : int
+        Output feature dimension.
+    """
     def __init__(self, in_dim: int, out_dim: int):
         super().__init__()
-        # self.bn   = nn.BatchNorm1d(in_dim, affine=True)
         self.ln = nn.LayerNorm(in_dim, elementwise_affine=True)
         self.fc   = nn.Linear(in_dim, out_dim)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch, seq_len, in_dim).
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor of shape (batch, seq_len, out_dim).
+        """
         # x: (batch, seq_len, in_dim)
-        # return self.block(x)
-        # x = self.bn(x.transpose(1,2)).transpose(1,2)  # (B,T,F) -> BN -> (B,T,F)
         x = self.ln(x)  # (B, T, F)
         return self.relu(self.fc(x))
 
 
 class UTransNet(nn.Module):
     """
-    U-Net-style encoder/decoder with a Transformer bottleneck.
+    U-Net-style encoder/decoder with a Transformer bottleneck for financial time-series.
 
+    Architecture:
     ── Input  ➜  1×64  ➜  1×128  ➜  1×256  ➜  Transformer  ─┐
                      ↑        ↑         ↑                 │
                      └────────┴─────────┴─────────────────┘  (skip-adds)
                                ↓         ↓         ↓
                           1×256 ▸ 1×128 ▸ 1×64 ▸ heads
+
+    Parameters
+    ----------
+    input_dim : int
+        Number of input features per time step.
+    n_actions : int, optional
+        Number of discrete actions (e.g., Buy, Sell, Hold), by default 3.
+    n_transformer_heads : int, optional
+        Number of attention heads in the Transformer bottleneck, by default 8.
+    n_transformer_layers : int, optional
+        Number of Transformer encoder layers, by default 1.
     """
     def __init__(
         self,
-        input_dim: int,          # feature dimension per time step
-        n_actions: int = 3,      # Buy / Sell / Hold
+        input_dim: int,
+        n_actions: int = 3,
         n_transformer_heads: int = 8,
         n_transformer_layers: int = 1,
     ):
@@ -67,12 +101,20 @@ class UTransNet(nn.Module):
 
     # --------------------------------------------------------------------- #
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        x: (batch, seq_len, input_dim)
-        Returns:
-            q_values   : (batch, n_actions)
-            act_weight : (batch,) ─ scalar in [0, 1]
+        Forward pass of the UTransNet.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch, seq_len, input_dim).
+
+        Returns
+        -------
+        Tuple[torch.Tensor, torch.Tensor]
+            - q_values: Tensor of shape (batch, n_actions) representing action logits.
+            - act_weight: Tensor of shape (batch,) representing position sizing confidence (0-1).
         """
         # Encoder -------------------------------------------------------------
         e1 = self.enc1(x)     # 1 × 64
@@ -92,15 +134,11 @@ class UTransNet(nn.Module):
         final = d2 + e1           # last skip (no further reduction)
 
         # Heads ---------------------------------------------------------------
-        # pooled = final.mean(dim=1)        # global average over sequence
-        # pooled = final[:, -1, :]  # take the last time step (as in the paper)
-        # pooled = final.squeeze(1)  # (batch, 64)
-        pooled = final.mean(dim=1)  # global average over sequence (changed from last timestep)
+        pooled = final.mean(dim=1)  # global average over sequence
         act_weight = self.weight_head(pooled).squeeze(-1)
+        
+        # Condition action head on the weight
         pooled_with_weight = torch.cat([pooled, act_weight.unsqueeze(1)], dim=1)  # (batch, 65)
         q_values   = self.act_head(pooled_with_weight)
-
-        # q_values   = self.act_head(pooled)
-
 
         return q_values, act_weight

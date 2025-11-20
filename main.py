@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any
 from shutil import copy2
-from datetime import datetime
 import json
 import numpy as np
 import pandas as pd
@@ -11,11 +10,9 @@ import matplotlib.pyplot as plt
 
 from train import train_one
 from evaluate import evaluate_one
+import config
 
-RUN_TYPES = ["baseline", "headline", "techsent", "all"]
-
-
-def _slim_record(train_meta: dict, eval_meta: dict, seed: int) -> dict:
+def _slim_record(train_meta: Dict[str, Any], eval_meta: Dict[str, Any], seed: int) -> Dict[str, Any]:
     """Keep only JSON-safe bits (paths/metrics) for per-run JSON and manifest."""
     return {
         "seed": seed,
@@ -37,7 +34,7 @@ def _slim_record(train_meta: dict, eval_meta: dict, seed: int) -> dict:
     }
 
 
-def pick_best(run_records: List[Dict], metric: str = "CAGR_%") -> Dict:
+def pick_best(run_records: List[Dict[str, Any]], metric: str = "CAGR_%") -> Dict[str, Any] | None:
     best = None
     best_val = -np.inf
     for r in run_records:
@@ -49,8 +46,8 @@ def pick_best(run_records: List[Dict], metric: str = "CAGR_%") -> Dict:
 
 
 def plot_combined_best(
-    *, ticker: str, best_by_type: Dict[str, Dict], results_root: str | Path = "results"
-):
+    *, ticker: str, best_by_type: Dict[str, Dict[str, Any]], results_root: str | Path = config.RESULTS_ROOT
+) -> str:
     results_root = Path(results_root)
     plots_dir = results_root / "plots" / ticker
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -78,22 +75,22 @@ def plot_combined_best(
 def run_for_ticker(
     *,
     ticker: str,
-    seeds: List[int] = [26, 927, 2025],
+    seeds: List[int] = config.SEEDS,
     selection_metric: str = "CAGR_%",
-    data_root: str | Path = "data",
-    results_root: str | Path = "results",
-    checkpoints_root: str | Path = "checkpoints",
-) -> Dict:
+    data_root: str | Path = config.DATA_ROOT,
+    results_root: str | Path = config.RESULTS_ROOT,
+    checkpoints_root: str | Path = config.CHECKPOINTS_ROOT,
+) -> Dict[str, Any]:
     print(f"===== {ticker}: starting ablation =====")
     tdir = Path(data_root) / ticker
     train_csv = tdir / "train.csv"
     test_csv = tdir / "test.csv"
 
-    exp_records: Dict[str, List[Dict]] = {k: [] for k in RUN_TYPES}        # full (in-memory)
-    exp_records_slim: Dict[str, List[Dict]] = {k: [] for k in RUN_TYPES}   # JSON-safe
+    exp_records: Dict[str, List[Dict[str, Any]]] = {k: [] for k in config.RUN_TYPES}        # full (in-memory)
+    exp_records_slim: Dict[str, List[Dict[str, Any]]] = {k: [] for k in config.RUN_TYPES}   # JSON-safe
 
     # 1) run all seeds WITHOUT plots to avoid clutter
-    for run_type in RUN_TYPES:
+    for run_type in config.RUN_TYPES:
         print(f"--- Experiment: {run_type} ---")
         for s in seeds:
             print(f"Seed {s}…")
@@ -123,9 +120,11 @@ def run_for_ticker(
             exp_records_slim[run_type].append(rec_slim)  # store slim for manifest
 
     # 2) choose best per run_type
-    best_by_type: Dict[str, Dict] = {
-        rt: pick_best(exp_records[rt], selection_metric) for rt in RUN_TYPES
-    }
+    best_by_type: Dict[str, Dict[str, Any]] = {}
+    for rt in config.RUN_TYPES:
+        best = pick_best(exp_records[rt], selection_metric)
+        if best:
+            best_by_type[rt] = best
 
     best_ckpt_dir = Path(checkpoints_root) / ticker
     best_ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -169,24 +168,18 @@ def run_for_ticker(
     return manifest
 
 
-def main():
+def main() -> None:
 
-    seeds = [8, 26, 1111] 
-
-    # tickers = [ "DIS", "BABA", "GOOG", "KO", "MRK", "MS", "NVDA", "QQQ", "T", "WFC"]
-    tickers = ["GE"]
-
-
-    print("Tickers:", tickers)
+    print("Tickers:", config.TICKERS)
     all_manifests = {}
-    for t in tickers:
+    for t in config.TICKERS:
         all_manifests[t] = run_for_ticker(
             ticker=t,
-            seeds=seeds,
-            selection_metric="final_return_%",
-            data_root="data",
-            results_root="results",
-            checkpoints_root="checkpoints",
+            seeds=config.SEEDS,
+            selection_metric=config.SELECTION_METRIC,
+            data_root=config.DATA_ROOT,
+            results_root=config.RESULTS_ROOT,
+            checkpoints_root=config.CHECKPOINTS_ROOT,
         )
 
     rows = []

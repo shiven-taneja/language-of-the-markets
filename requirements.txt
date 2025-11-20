@@ -1,0 +1,11 @@
+torch>=2.0.0
+numpy<2
+pandas
+matplotlib
+seaborn
+yfinance
+groq
+python-dotenv
+psycopg2-binary
+requests
+tqdm
